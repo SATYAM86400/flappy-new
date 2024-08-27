@@ -1,5 +1,5 @@
   <p align="center">
-   Interactive and nostalgic single player game
+   <h1>Interactive and nostalgic single player game</h1>
     <br/>
     <br/>
 

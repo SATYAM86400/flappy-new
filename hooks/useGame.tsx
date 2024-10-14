@@ -1,11 +1,12 @@
+// useGame.tsx
 import _ from "lodash";
-import React, { useEffect } from "react";
-import useMediaQuery from "./useMediaQuery";
+import React from "react";
+import { AptosClient, Types } from "aptos";
 import { useImmer } from "use-immer";
 import { TargetAndTransition } from "framer-motion";
-import useElementSize from "./useElementSize";
 import { WritableDraft } from "immer/dist/internal";
 import { v4 } from "uuid";
+import { useWalletContext } from "../context/walletContext";
 
 const HEIGHT = 64;
 const WIDTH = 92;
@@ -61,7 +62,7 @@ const defaultState = {
   rounds: [],
   isStarted: false,
   isReady: false,
-  window: {
+  gameWindow: { // Renamed from 'window' to 'gameWindow'
     width: 0,
     height: 0,
   },
@@ -69,11 +70,15 @@ const defaultState = {
     distance: 1.1,
     step: 5,
   },
+  gameOver: false,
+  score: 0,
 };
+
 type Size = {
   width: number;
   height: number;
 };
+
 type Coordinates = {
   x: number;
   y: number;
@@ -85,18 +90,22 @@ export type PipeType = {
   size: Size;
   key?: string;
 };
+
 export type PipesType = {
   top: PipeType;
   bottom: PipeType;
 };
+
 interface GameContext extends GameState {
   getNextFrame: () => void;
   fly: () => void;
   fall: () => void;
   handleWindowClick: () => void;
   movePipes: () => void;
-  startGame: (window: Size) => void;
+  startGame: (gameWindow: Size) => void; // Updated parameter name
+  resetGame: () => void;
 }
+
 interface GameState {
   bird: {
     position: Coordinates;
@@ -133,54 +142,148 @@ interface GameState {
   }[];
   isStarted: boolean;
   isReady: boolean;
-  window: Size;
+  gameWindow: Size; // Updated variable name
   multiplier: {
     step: number;
     distance: number;
   };
+  gameOver: boolean;
+  score: number;
 }
+
 type StateDraft = WritableDraft<GameState>;
 const GameContext = React.createContext<GameContext | null>(null);
+
+// Initialize Aptos Client with the correct network URL
+const client = new AptosClient("https://fullnode.testnet.aptoslabs.com/v1"); // Use appropriate network
+
+// Function to create a game on the Aptos blockchain using window.aptos
+export const createGameOnChain = async () => {
+  try {
+    if (typeof window === "undefined" || !window.aptos) {
+      throw new Error("Aptos wallet is not connected");
+    }
+
+    // Construct the payload for the Move entry function `create_game`
+    const payload: Types.TransactionPayload = {
+      type: "entry_function_payload",
+      function:
+        "0xe7d3a8337a3bf682022da10fdfca180727436c7787b11d1166a1e78d050bdf38::flappy_game::create_game",
+      type_arguments: [], // No type arguments for the function
+      arguments: [], // No arguments are needed for `create_game`
+    };
+
+    // Call signAndSubmitTransaction with the correct format
+    const response = await window.aptos.signAndSubmitTransaction(payload);
+    console.log("Game creation transaction submitted:", response.hash);
+
+    // Wait for transaction confirmation
+    const transaction = await client.waitForTransactionWithResult(response.hash);
+    console.log("Game creation confirmed:", transaction);
+    return transaction;
+  } catch (error) {
+    console.error("Failed to create game on blockchain:", error);
+    throw error;
+  }
+};
+
+// Function to submit score to the Aptos blockchain using window.aptos
+export const submitScoreOnChain = async (score: number) => {
+  try {
+    if (typeof window === "undefined" || !window.aptos) {
+      throw new Error("Aptos wallet is not connected");
+    }
+
+    const payload: Types.TransactionPayload = {
+      type: "entry_function_payload",
+      function:
+        "0xe7d3a8337a3bf682022da10fdfca180727436c7787b11d1166a1e78d050bdf38::flappy_game::submit_score",
+      type_arguments: [],
+      arguments: [score.toString()], // Send the score as a string
+    };
+
+    const response = await window.aptos.signAndSubmitTransaction(payload);
+    console.log("Score submission transaction submitted:", response.hash);
+
+    await client.waitForTransactionWithResult(response.hash);
+    console.log("Score submission confirmed");
+  } catch (error) {
+    console.error("Failed to submit score on blockchain:", error);
+    throw error;
+  }
+};
+
 export const GameProvider = ({ children }: { children: React.ReactNode }) => {
   const [state, setState] = useImmer<GameState>(defaultState);
+  const { connected } = useWalletContext(); // Use Wallet context
+
   // Main Functions
-  const startGame = (window: Size) => {
+  const startGame = (gameWindow: Size) => { // Updated parameter name
+    if (!connected) {
+      console.error("Wallet not connected");
+      return;
+    }
+
+    if (gameWindow.width === 0 || gameWindow.height === 0) {
+      console.error("Window dimensions not set");
+      return;
+    }
+
     setState((draft) => {
-      draft.window = window;
+      console.log("Starting game with window dimensions:", gameWindow.width, gameWindow.height);
+      draft.gameWindow = gameWindow;
       draft.isReady = true;
+      draft.isStarted = true;
+      draft.gameOver = false;
+      draft.score = 0;
+      draft.rounds.push({
+        score: 0,
+        datetime: new Date().toISOString(),
+        key: v4(),
+      });
       setBirdCenter(draft);
       createPipes(draft);
       return draft;
     });
   };
+
+  const resetGame = () => {
+    setState((draft) => {
+      Object.assign(draft, defaultState);
+    });
+  };
+
   const increaseScore = (draft: StateDraft) => {
     draft.rounds[draft.rounds.length - 1].score += 1;
+    draft.score += 1; // Increment the score in the state
   };
+
   const multiplySpeed = (draft: StateDraft) => {
     const round = _.last(draft.rounds);
     if (round && round.score % draft.multiplier.step === 0) {
       draft.pipe.distance = draft.pipe.distance * draft.multiplier.distance;
     }
   };
-  // Pipe Functions
+
   const generatePipeExtension = (index: number, draft: StateDraft) => {
     const odd = _.random(0, 1) === 1;
     const randomNumber = _.random(odd ? 0.5 : 0, odd ? 1 : 0, true);
     const extension = randomNumber * draft.pipe.extension;
     return {
       height: draft.pipe.height + extension,
-      y: draft.window.height - draft.pipe.height + extension,
+      y: draft.gameWindow.height - draft.pipe.height + extension,
     };
   };
+
   const createPipes = (draft: StateDraft) => {
-    const window = draft.window;
-    draft.pipe.width = window.width / draft.pipes.length;
-    draft.pipe.height = (1 / 3) * window.height;
+    const gameWindow = draft.gameWindow;
+    draft.pipe.width = gameWindow.width / draft.pipes.length;
+    draft.pipe.height = (1 / 3) * gameWindow.height;
     draft.pipe.distance = defaultState.pipe.distance;
-    draft.pipe.extension = (0.5 / 3) * window.height;
+    draft.pipe.extension = (0.5 / 3) * gameWindow.height;
     draft.pipes.forEach((pipe, index) => {
       const { height, y } = generatePipeExtension(index, draft);
-      var x = (index * 2 + 1) * draft.pipe.width + window.width;
+      var x = (index * 2 + 1) * draft.pipe.width + gameWindow.width;
       pipe.top.initial = {
         x,
         y: 0,
@@ -201,13 +304,14 @@ export const GameProvider = ({ children }: { children: React.ReactNode }) => {
       pipe.bottom.position = pipe.bottom.initial;
     });
   };
+
   const movePipes = () => {
     setState((draft) => {
       draft.pipes.forEach((pipe, index) => {
         if (pipe.top.position.x + pipe.top.size.width * 2 <= 0) {
           const { height, y } = generatePipeExtension(index, draft);
-          pipe.top.position.x = draft.pipe.width * 2 + draft.window.width;
-          pipe.bottom.position.x = draft.pipe.width * 2 + draft.window.width;
+          pipe.top.position.x = draft.pipe.width * 2 + draft.gameWindow.width;
+          pipe.bottom.position.x = draft.pipe.width * 2 + draft.gameWindow.width;
           pipe.top.size.height = height;
           pipe.bottom.size.height = height;
           pipe.bottom.position.y = y;
@@ -223,33 +327,28 @@ export const GameProvider = ({ children }: { children: React.ReactNode }) => {
       return draft;
     });
   };
-  // Window Functions
+
   const handleWindowClick = () => {
+    if (!connected) {
+      console.error("Wallet not connected");
+      return;
+    }
+
     if (state.isStarted) {
       fly();
-    } else {
-      setState((draft) => {
-        draft.isStarted = true;
-        draft.rounds.push({
-          score: 0,
-          datetime: new Date().toISOString(),
-          key: v4(),
-        });
-        draft.bird.isFlying = true;
-        setBirdCenter(draft);
-        createPipes(draft);
-        return draft;
-      });
     }
   };
-  // Bird Functions
+
   const setBirdCenter = (draft: StateDraft) => {
-    draft.bird.position.x = draft.window.width / 2 - draft.bird.size.width / 2;
+    console.log("Window dimensions:", draft.gameWindow.width, draft.gameWindow.height);
+    draft.bird.position.x = draft.gameWindow.width / 2 - draft.bird.size.width / 2;
     draft.bird.position.y =
-      draft.window.height / 2 - draft.bird.size.height / 2;
+      draft.gameWindow.height / 2 - draft.bird.size.height / 2;
     draft.bird.initial.x = draft.bird.position.x;
     draft.bird.initial.y = draft.bird.position.y;
+    console.log("Bird position:", draft.bird.position.x, draft.bird.position.y);
   };
+
   const getNextFrame = () =>
     setState((draft) => {
       var next = (draft.bird.frameIndex + 1) % FRAMES.length;
@@ -257,10 +356,11 @@ export const GameProvider = ({ children }: { children: React.ReactNode }) => {
       draft.bird.frameIndex = next;
       return draft;
     });
+
   const checkImpact = (draft: StateDraft) => {
     const groundImpact =
       draft.bird.position.y + draft.bird.size.height >=
-      draft.window.height + draft.pipe.tolerance;
+      draft.gameWindow.height + draft.pipe.tolerance;
     const impactablePipes = draft.pipes.filter((pipe) => {
       return (
         pipe.top.position.x <
@@ -283,6 +383,7 @@ export const GameProvider = ({ children }: { children: React.ReactNode }) => {
       draft.bird.isFlying = false;
       draft.isStarted = false;
       draft.bird.animate.rotate = [0, 540];
+      draft.gameOver = true; // Set gameOver to true
     } else {
       draft.bird.animate.rotate = [0, 0];
     }
@@ -305,6 +406,7 @@ export const GameProvider = ({ children }: { children: React.ReactNode }) => {
       return draft;
     });
   };
+
   return (
     <GameContext.Provider
       value={{
@@ -315,6 +417,7 @@ export const GameProvider = ({ children }: { children: React.ReactNode }) => {
         handleWindowClick,
         movePipes,
         startGame,
+        resetGame,
       }}
     >
       {children}

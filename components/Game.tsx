@@ -11,6 +11,9 @@ import dynamic from "next/dynamic";
 import { useWalletContext } from "../context/walletContext";
 import _ from "lodash";
 import { createGameOnChain, submitScoreOnChain } from "../hooks/useGame";
+import CharacterSelector from "./CharacterSelector";
+import Leaderboard from "./Leaderboard";
+import Lifelines from "./Lifelines";
 
 // Dynamically import WalletSetup with SSR disabled
 const WalletSetup = dynamic(() => import("./WalletSetup"), { ssr: false });
@@ -23,6 +26,8 @@ export default function Game() {
     rounds,
     gameOver,
     score,
+    selectedCharacter,
+    restartGame, // Added restartGame function
   } = useGame();
   const [ref, window] = useElementSize();
   const { connected, account } = useWalletContext();
@@ -60,7 +65,7 @@ export default function Game() {
   };
 
   // Function to submit the score to the blockchain
-  const submitScoreTransaction = async (score) => {
+  const submitScoreTransaction = async (score, character) => {
     if (!connected || !account) {
       alert("Please connect your wallet before submitting your score.");
       return;
@@ -69,7 +74,7 @@ export default function Game() {
     setTransactionPending(true);
     try {
       console.log("Submitting score to blockchain...");
-      const transaction = await submitScoreOnChain(score);
+      const transaction = await submitScoreOnChain(score, character);
       console.log("Score submission result:", transaction);
       alert(`Your score of ${score} has been submitted.`);
     } catch (error) {
@@ -92,13 +97,19 @@ export default function Game() {
   // Submit the score when the game is over
   useEffect(() => {
     if (gameOver && score !== null) {
-      submitScoreTransaction(score);
+      submitScoreTransaction(score, selectedCharacter);
     }
   }, [gameOver]);
 
   const handleGameClick = () => {
     if (!gameStarted) return;
     handleWindowClick();
+  };
+
+  // Handle game restart
+  const handleRestart = () => {
+    restartGame();
+    setGameStarted(false);
   };
 
   return (
@@ -110,9 +121,21 @@ export default function Game() {
       <Background />
 
       {/* Wallet connection UI */}
-      <div className="absolute top-4 right-4 z-20">
+      <div className="absolute top-1 right-2 z-20">
         <WalletSetup />
       </div>
+
+      {/* Leaderboard */}
+      <div className="absolute top-4 left-4 z-20">
+        <Leaderboard />
+      </div>
+
+      {/* Lifelines */}
+      {gameStarted && (
+        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-20">
+          <Lifelines />
+        </div>
+      )}
 
       {!connected && (
         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center text-red-600">
@@ -120,8 +143,15 @@ export default function Game() {
         </div>
       )}
 
+      {/* Character Selector */}
+      {!selectedCharacter && connected && (
+        <div className="absolute inset-0 flex items-center justify-center z-10">
+          <CharacterSelector />
+        </div>
+      )}
+
       {/* Start Game Button (only if game isn't started yet) */}
-      {!gameStarted && connected && (
+      {selectedCharacter && !gameStarted && connected && (
         <div className="absolute inset-0 flex items-center justify-center z-10">
           <button
             onClick={createGameTransaction}
@@ -164,6 +194,25 @@ export default function Game() {
             <div>Game is not ready.</div>
           )}
         </motion.div>
+      )}
+
+      {/* Restart Button when game is over */}
+      {gameOver && (
+        <div className="absolute inset-0 flex items-center justify-center z-20">
+          <button
+            onClick={handleRestart}
+            style={{
+              padding: "10px 20px",
+              fontSize: "16px",
+              backgroundColor: "#0070f3",
+              color: "#fff",
+              borderRadius: "5px",
+              cursor: "pointer",
+            }}
+          >
+            Restart Game
+          </button>
+        </div>
       )}
 
       {/* Footer with score */}

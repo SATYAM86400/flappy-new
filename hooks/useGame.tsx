@@ -62,7 +62,7 @@ const defaultState = {
   rounds: [],
   isStarted: false,
   isReady: false,
-  gameWindow: { // Renamed from 'window' to 'gameWindow'
+  gameWindow: {
     width: 0,
     height: 0,
   },
@@ -72,6 +72,12 @@ const defaultState = {
   },
   gameOver: false,
   score: 0,
+  selectedCharacter: null,
+  leaderboard: {
+    TRUMP: 0,
+    KAMALA: 0,
+  },
+  lifelines: 3,
 };
 
 type Size = {
@@ -102,8 +108,10 @@ interface GameContext extends GameState {
   fall: () => void;
   handleWindowClick: () => void;
   movePipes: () => void;
-  startGame: (gameWindow: Size) => void; // Updated parameter name
+  startGame: (gameWindow: Size) => void;
   resetGame: () => void;
+  setSelectedCharacter: (character: string) => void;
+  restartGame: () => void; // Added restartGame function
 }
 
 interface GameState {
@@ -142,13 +150,19 @@ interface GameState {
   }[];
   isStarted: boolean;
   isReady: boolean;
-  gameWindow: Size; // Updated variable name
+  gameWindow: Size;
   multiplier: {
     step: number;
     distance: number;
   };
   gameOver: boolean;
   score: number;
+  selectedCharacter: string | null;
+  leaderboard: {
+    TRUMP: number;
+    KAMALA: number;
+  };
+  lifelines: number;
 }
 
 type StateDraft = WritableDraft<GameState>;
@@ -199,7 +213,7 @@ export const submitScoreOnChain = async (score: number) => {
       function:
         "0xe7d3a8337a3bf682022da10fdfca180727436c7787b11d1166a1e78d050bdf38::flappy_game::submit_score",
       type_arguments: [],
-      arguments: [score.toString()], // Send the score as a string
+      arguments: [score.toString()], // Send the score and character
     };
 
     const response = await window.aptos.signAndSubmitTransaction(payload);
@@ -218,7 +232,7 @@ export const GameProvider = ({ children }: { children: React.ReactNode }) => {
   const { connected } = useWalletContext(); // Use Wallet context
 
   // Main Functions
-  const startGame = (gameWindow: Size) => { // Updated parameter name
+  const startGame = (gameWindow: Size) => {
     if (!connected) {
       console.error("Wallet not connected");
       return;
@@ -236,6 +250,7 @@ export const GameProvider = ({ children }: { children: React.ReactNode }) => {
       draft.isStarted = true;
       draft.gameOver = false;
       draft.score = 0;
+      draft.lifelines = 3; // Reset lifelines
       draft.rounds.push({
         score: 0,
         datetime: new Date().toISOString(),
@@ -253,9 +268,32 @@ export const GameProvider = ({ children }: { children: React.ReactNode }) => {
     });
   };
 
+  // Added restartGame function
+  const restartGame = () => {
+    setState((draft) => {
+      // Reset the necessary game state to restart from character selection
+      draft.isStarted = false;
+      draft.isReady = false;
+      draft.gameOver = false;
+      draft.score = 0;
+      draft.lifelines = 3;
+      draft.selectedCharacter = null; // Reset character selection
+      draft.rounds = [];
+      // Reset bird and pipes positions
+      draft.bird = { ...defaultState.bird };
+      draft.pipes = defaultState.pipes.map((pipe) => ({ ...pipe }));
+      draft.pipe = { ...defaultState.pipe };
+    });
+  };
+
   const increaseScore = (draft: StateDraft) => {
     draft.rounds[draft.rounds.length - 1].score += 1;
     draft.score += 1; // Increment the score in the state
+
+    // Update the cumulative score for the selected character
+    if (draft.selectedCharacter) {
+      draft.leaderboard[draft.selectedCharacter] += 1;
+    }
   };
 
   const multiplySpeed = (draft: StateDraft) => {
@@ -380,10 +418,20 @@ export const GameProvider = ({ children }: { children: React.ReactNode }) => {
       return birdTop < topPipe || birdBottom > bottomPipe;
     });
     if (groundImpact || pipeImpact) {
-      draft.bird.isFlying = false;
-      draft.isStarted = false;
-      draft.bird.animate.rotate = [0, 540];
-      draft.gameOver = true; // Set gameOver to true
+      if (draft.lifelines > 0) {
+        // Reduce lifelines and allow the game to continue
+        draft.lifelines -= 1;
+        console.log(`Lifelines remaining: ${draft.lifelines}`);
+
+        // Reset bird position or provide some visual feedback
+        draft.bird.position.y = draft.bird.initial.y;
+      } else {
+        // No lifelines left, end the game
+        draft.bird.isFlying = false;
+        draft.isStarted = false;
+        draft.bird.animate.rotate = [0, 0]; // Removed rotation to fix animation issue
+        draft.gameOver = true;
+      }
     } else {
       draft.bird.animate.rotate = [0, 0];
     }
@@ -407,6 +455,12 @@ export const GameProvider = ({ children }: { children: React.ReactNode }) => {
     });
   };
 
+  const setSelectedCharacter = (character: string) => {
+    setState((draft) => {
+      draft.selectedCharacter = character;
+    });
+  };
+
   return (
     <GameContext.Provider
       value={{
@@ -418,6 +472,8 @@ export const GameProvider = ({ children }: { children: React.ReactNode }) => {
         movePipes,
         startGame,
         resetGame,
+        setSelectedCharacter,
+        restartGame, // Provide restartGame function
       }}
     >
       {children}

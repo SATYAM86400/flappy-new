@@ -1,6 +1,8 @@
+// FlappyBird.tsx
 import { motion } from "framer-motion";
 import useGame from "../hooks/useGame";
 import useInterval from "../hooks/useInterval";
+
 export function Bird() {
   const {
     bird: {
@@ -10,12 +12,18 @@ export function Bird() {
       flap: { delay },
     },
     getNextFrame,
+    selectedCharacter,
   } = useGame();
   useInterval(() => getNextFrame(), isFlying ? delay : null);
+
+  // Determine the sprite image based on selectedCharacter
+  const characterImage =
+    selectedCharacter === "TRUMP" ? "trump.png" : "kamala.png";
+
   return (
     <div
       style={{
-        backgroundImage: "url(bird.png)",
+        backgroundImage: `url(${characterImage})`,
         height,
         width,
         backgroundPosition: frame,
@@ -25,6 +33,7 @@ export function Bird() {
     />
   );
 }
+
 export default function FlappyBird() {
   const {
     isStarted,

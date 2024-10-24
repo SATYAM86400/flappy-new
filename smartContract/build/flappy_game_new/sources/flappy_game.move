@@ -1,4 +1,4 @@
-module 0xE7D3A8337A3BF682022DA10FDFCA180727436C7787B11D1166A1E78D050BDF38::flappy_game {
+module 0xe7d3a8337a3bf682022da10fdfca180727436c7787b11d1166a1e78d050bdf38::flappy_game {
     use std::signer;
     use std::string::{String, utf8};
     use aptos_framework::coin;

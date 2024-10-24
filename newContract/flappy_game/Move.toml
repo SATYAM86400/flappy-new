@@ -1,0 +1,14 @@
+[package]
+name = "flappy_game"
+version = "1.0.2"
+authors = ["satyam"]
+
+[addresses]
+flappyGameAddress = "0x4d5a446b5ba7f8f7eb529791a4c325d71b5f28c53a2418f18f18cd1200dadceb"
+
+[dependencies.SupraFramework]
+git = "https://github.com/Entropy-Foundation/aptos-core.git"
+rev = "dev"
+subdir = "aptos-move/framework/supra-framework"
+
+[dev-dependencies]

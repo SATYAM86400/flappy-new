@@ -5,11 +5,26 @@ const useClientWallet = () => {
   const [wallet, setWallet] = useState<any>(null);
 
   useEffect(() => {
-    const loadWallet = async () => {
+    const loadWallet = () => {
       if (typeof window !== 'undefined') {
-        // Load wallet functions only on the client-side
-        const { useWallet } = await import('@aptos-labs/wallet-adapter-react');
-        setWallet(useWallet());
+        const getProvider = () => {
+          if ('starkey' in window) {
+            const provider = window.starkey;
+
+            if (provider) {
+              return provider;
+            }
+          }
+
+          window.open('https://starkey.app/', '_blank');
+        };
+
+        const provider = getProvider();
+        if (provider) {
+          setWallet(provider);
+        } else {
+          console.error('StarKey wallet not found');
+        }
       }
     };
 

@@ -1,21 +1,22 @@
 // useGame.tsx
-import _ from "lodash";
-import React from "react";
-import { AptosClient, Types } from "aptos";
-import { useImmer } from "use-immer";
-import { TargetAndTransition } from "framer-motion";
-import { WritableDraft } from "immer/dist/internal";
-import { v4 } from "uuid";
-import { useWalletContext } from "../context/walletContext";
+import _ from 'lodash';
+import React, { useEffect, useState } from 'react';
+import { SupraClient, HexString, BCS } from 'supra-l1-sdk'; // Import Supra SDK
+import { useImmer } from 'use-immer';
+import { TargetAndTransition } from 'framer-motion';
+import { WritableDraft } from 'immer/dist/internal';
+import { v4 } from 'uuid';
+import { useWalletContext } from '../context/walletContext';
 
 const HEIGHT = 64;
 const WIDTH = 92;
-const FRAMES = ["0px", "92px", "184px", "0px"];
+const FRAMES = ['0px', '92px', '184px', '0px'];
+
 const defaultState = {
   bird: {
     position: { x: 0, y: 0 },
     size: { width: WIDTH, height: HEIGHT },
-    animate: {},
+    animate: {} as TargetAndTransition,
     frame: FRAMES[0],
     frameIndex: 0,
     initial: {
@@ -30,10 +31,10 @@ const defaultState = {
     },
   },
   pipes: Array(4)
-    .fill("")
+    .fill('')
     .map((_, index) => ({
       top: {
-        key: "top" + index,
+        key: 'top' + index,
         position: { x: 0, y: 0 },
         initial: {
           x: 0,
@@ -42,12 +43,11 @@ const defaultState = {
         size: { width: 0, height: 0 },
       },
       bottom: {
-        key: "bottom" + index,
+        key: 'bottom' + index,
         position: { x: 0, y: 0 },
         initial: {
           x: 0,
-          y: 0,
-        },
+          y: 0 },
         size: { width: 0, height: 0 },
       },
     })),
@@ -59,7 +59,11 @@ const defaultState = {
     distance: 10,
     delay: 75,
   },
-  rounds: [],
+  rounds: [] as {
+    score: number;
+    datetime: string;
+    key: string;
+  }[],
   isStarted: false,
   isReady: false,
   gameWindow: {
@@ -72,7 +76,7 @@ const defaultState = {
   },
   gameOver: false,
   score: 0,
-  selectedCharacter: null,
+  selectedCharacter: null as string | null,
   leaderboard: {
     TRUMP: 0,
     KAMALA: 0,
@@ -111,7 +115,9 @@ interface GameContext extends GameState {
   startGame: (gameWindow: Size) => void;
   resetGame: () => void;
   setSelectedCharacter: (character: string) => void;
-  restartGame: () => void; // Added restartGame function
+  restartGame: () => void;
+  createGameOnChain: () => Promise<void>;
+  submitScoreOnChain: (score: number) => Promise<void>;
 }
 
 interface GameState {
@@ -168,83 +174,129 @@ interface GameState {
 type StateDraft = WritableDraft<GameState>;
 const GameContext = React.createContext<GameContext | null>(null);
 
-// Initialize Aptos Client with the correct network URL
-const client = new AptosClient("https://fullnode.testnet.aptoslabs.com/v1"); // Use appropriate network
-
-// Function to create a game on the Aptos blockchain using window.aptos
-export const createGameOnChain = async () => {
-  try {
-    if (typeof window === "undefined" || !window.aptos) {
-      throw new Error("Aptos wallet is not connected");
-    }
-
-    // Construct the payload for the Move entry function `create_game`
-    const payload: Types.TransactionPayload = {
-      type: "entry_function_payload",
-      function:
-        "0xe7d3a8337a3bf682022da10fdfca180727436c7787b11d1166a1e78d050bdf38::flappy_game::create_game",
-      type_arguments: [], // No type arguments for the function
-      arguments: [], // No arguments are needed for `create_game`
-    };
-
-    // Call signAndSubmitTransaction with the correct format
-    const response = await window.aptos.signAndSubmitTransaction(payload);
-    console.log("Game creation transaction submitted:", response.hash);
-
-    // Wait for transaction confirmation
-    const transaction = await client.waitForTransactionWithResult(response.hash);
-    console.log("Game creation confirmed:", transaction);
-    return transaction;
-  } catch (error) {
-    console.error("Failed to create game on blockchain:", error);
-    throw error;
-  }
-};
-
-// Function to submit score to the Aptos blockchain using window.aptos
-export const submitScoreOnChain = async (score: number) => {
-  try {
-    if (typeof window === "undefined" || !window.aptos) {
-      throw new Error("Aptos wallet is not connected");
-    }
-
-    const payload: Types.TransactionPayload = {
-      type: "entry_function_payload",
-      function:
-        "0xe7d3a8337a3bf682022da10fdfca180727436c7787b11d1166a1e78d050bdf38::flappy_game::submit_score",
-      type_arguments: [],
-      arguments: [score.toString()], // Send the score and character
-    };
-
-    const response = await window.aptos.signAndSubmitTransaction(payload);
-    console.log("Score submission transaction submitted:", response.hash);
-
-    await client.waitForTransactionWithResult(response.hash);
-    console.log("Score submission confirmed");
-  } catch (error) {
-    console.error("Failed to submit score on blockchain:", error);
-    throw error;
-  }
-};
-
 export const GameProvider = ({ children }: { children: React.ReactNode }) => {
   const [state, setState] = useImmer<GameState>(defaultState);
-  const { connected } = useWalletContext(); // Use Wallet context
+  const { connected, account, signAndSubmitTransaction } = useWalletContext();
+  const [supraClient, setSupraClient] = useState<SupraClient | null>(null);
 
-  // Main Functions
+  // Replace with your module address
+  const MODULE_ADDRESS = '0x39dc021a730a577b379df7e4e8e673f8fa113b6bb2e6bce460779a0f0248d504';
+  const MODULE_NAME = 'flappy_game';
+
+  useEffect(() => {
+    const initSupraClient = async () => {
+      try {
+        // Initialize SupraClient
+        const client = await SupraClient.init('https://rpc-testnet.supra.com/');
+        setSupraClient(client);
+      } catch (error) {
+        console.error('Failed to initialize SupraClient:', error);
+      }
+    };
+
+    initSupraClient();
+  }, []);
+
+  const createGameOnChain = async () => {
+    try {
+      if (!connected || !supraClient) {
+        throw new Error('Wallet not connected or SupraClient not initialized');
+      }
+
+      // Prepare transaction details
+      const functionName = 'create_game';
+
+      // Create the transaction payload
+      const payload = {
+        function: `${MODULE_ADDRESS}::${MODULE_NAME}::${functionName}`,
+        type_arguments: [], // Type arguments, if any
+        arguments: [], // Function arguments, if any
+      };
+
+      // Create the transaction object
+      const transaction = await prepareTransaction(payload);
+
+      // Use the wallet to sign and submit the transaction
+      const response = await signAndSubmitTransaction(transaction);
+
+      console.log('Game creation transaction submitted:', response);
+    } catch (error) {
+      console.error('Failed to create game on blockchain:', error);
+      throw error;
+    }
+  };
+
+  const submitScoreOnChain = async (score: number) => {
+    try {
+      if (!connected || !supraClient) {
+        throw new Error('Wallet not connected or SupraClient not initialized');
+      }
+
+      // Prepare transaction details
+      const functionName = 'submit_score';
+
+      // Serialize the score argument
+      const scoreArg = BCS.bcsSerializeUint64(score).toString('hex');
+
+      // Create the transaction payload
+      const payload = {
+        function: `${MODULE_ADDRESS}::${MODULE_NAME}::${functionName}`,
+        type_arguments: [], // Type arguments, if any
+        arguments: [scoreArg], // Function arguments
+      };
+
+      // Create the transaction object
+      const transaction = await prepareTransaction(payload);
+
+      // Use the wallet to sign and submit the transaction
+      const response = await signAndSubmitTransaction(transaction);
+
+      console.log('Score submission transaction submitted:', response);
+    } catch (error) {
+      console.error('Failed to submit score on blockchain:', error);
+      throw error;
+    }
+  };
+
+  const prepareTransaction = async (payload: any) => {
+    if (!supraClient || !account) {
+      throw new Error('SupraClient or account not initialized');
+    }
+
+    // Get the user's address
+    const senderAddress = new HexString(account);
+
+    // Get the account info to get the sequence number
+    const accountInfo = await supraClient.getAccountInfo(senderAddress);
+
+    // Create the transaction object
+    const transaction = {
+      sender: account,
+      payload,
+      sequence_number: accountInfo.sequence_number.toString(),
+      max_gas_amount: '2000', // Adjust gas amount as needed
+      gas_unit_price: '1', // Adjust gas price as needed
+      expiration_timestamp_secs: (Math.floor(Date.now() / 1000) + 600).toString(), // Set expiration to 10 minutes from now
+      chain_id: supraClient.chainId.toString(),
+    };
+
+    return transaction;
+  };
+
+  // Main Functions (Game Logic)
   const startGame = (gameWindow: Size) => {
     if (!connected) {
-      console.error("Wallet not connected");
+      console.error('Wallet not connected');
       return;
     }
 
     if (gameWindow.width === 0 || gameWindow.height === 0) {
-      console.error("Window dimensions not set");
+      console.error('Window dimensions not set');
       return;
     }
 
     setState((draft) => {
-      console.log("Starting game with window dimensions:", gameWindow.width, gameWindow.height);
+      console.log('Starting game with window dimensions:', gameWindow.width, gameWindow.height);
       draft.gameWindow = gameWindow;
       draft.isReady = true;
       draft.isStarted = true;
@@ -258,8 +310,10 @@ export const GameProvider = ({ children }: { children: React.ReactNode }) => {
       });
       setBirdCenter(draft);
       createPipes(draft);
-      return draft;
     });
+
+    // Call createGameOnChain when game starts
+    createGameOnChain();
   };
 
   const resetGame = () => {
@@ -268,18 +322,15 @@ export const GameProvider = ({ children }: { children: React.ReactNode }) => {
     });
   };
 
-  // Added restartGame function
   const restartGame = () => {
     setState((draft) => {
-      // Reset the necessary game state to restart from character selection
       draft.isStarted = false;
       draft.isReady = false;
       draft.gameOver = false;
       draft.score = 0;
       draft.lifelines = 3;
-      draft.selectedCharacter = null; // Reset character selection
+      draft.selectedCharacter = null;
       draft.rounds = [];
-      // Reset bird and pipes positions
       draft.bird = { ...defaultState.bird };
       draft.pipes = defaultState.pipes.map((pipe) => ({ ...pipe }));
       draft.pipe = { ...defaultState.pipe };
@@ -288,9 +339,8 @@ export const GameProvider = ({ children }: { children: React.ReactNode }) => {
 
   const increaseScore = (draft: StateDraft) => {
     draft.rounds[draft.rounds.length - 1].score += 1;
-    draft.score += 1; // Increment the score in the state
+    draft.score += 1;
 
-    // Update the cumulative score for the selected character
     if (draft.selectedCharacter) {
       draft.leaderboard[draft.selectedCharacter] += 1;
     }
@@ -361,14 +411,12 @@ export const GameProvider = ({ children }: { children: React.ReactNode }) => {
         pipe.top.position.x -= draft.pipe.distance;
         pipe.bottom.position.x -= draft.pipe.distance;
       });
-
-      return draft;
     });
   };
 
   const handleWindowClick = () => {
     if (!connected) {
-      console.error("Wallet not connected");
+      console.error('Wallet not connected');
       return;
     }
 
@@ -378,59 +426,52 @@ export const GameProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   const setBirdCenter = (draft: StateDraft) => {
-    console.log("Window dimensions:", draft.gameWindow.width, draft.gameWindow.height);
+    console.log('Window dimensions:', draft.gameWindow.width, draft.gameWindow.height);
     draft.bird.position.x = draft.gameWindow.width / 2 - draft.bird.size.width / 2;
-    draft.bird.position.y =
-      draft.gameWindow.height / 2 - draft.bird.size.height / 2;
+    draft.bird.position.y = draft.gameWindow.height / 2 - draft.bird.size.height / 2;
     draft.bird.initial.x = draft.bird.position.x;
     draft.bird.initial.y = draft.bird.position.y;
-    console.log("Bird position:", draft.bird.position.x, draft.bird.position.y);
+    console.log('Bird position:', draft.bird.position.x, draft.bird.position.y);
   };
 
-  const getNextFrame = () =>
+  const getNextFrame = () => {
     setState((draft) => {
       var next = (draft.bird.frameIndex + 1) % FRAMES.length;
       draft.bird.frame = FRAMES[next];
       draft.bird.frameIndex = next;
-      return draft;
     });
+  };
 
   const checkImpact = (draft: StateDraft) => {
     const groundImpact =
-      draft.bird.position.y + draft.bird.size.height >=
-      draft.gameWindow.height + draft.pipe.tolerance;
+      draft.bird.position.y + draft.bird.size.height >= draft.gameWindow.height + draft.pipe.tolerance;
     const impactablePipes = draft.pipes.filter((pipe) => {
       return (
         pipe.top.position.x <
-          draft.bird.position.x -
-            draft.pipe.tolerance +
-            draft.bird.size.width &&
-        pipe.top.position.x + pipe.top.size.width >
-          draft.bird.position.x + draft.pipe.tolerance
+          draft.bird.position.x - draft.pipe.tolerance + draft.bird.size.width &&
+        pipe.top.position.x + pipe.top.size.width > draft.bird.position.x + draft.pipe.tolerance
       );
     });
     const pipeImpact = impactablePipes.some((pipe) => {
       const topPipe = pipe.top.position.y + pipe.top.size.height;
       const bottomPipe = pipe.bottom.position.y;
       const birdTop = draft.bird.position.y + draft.pipe.tolerance;
-      const birdBottom =
-        draft.bird.position.y + draft.bird.size.height - draft.pipe.tolerance;
+      const birdBottom = draft.bird.position.y + draft.bird.size.height - draft.pipe.tolerance;
       return birdTop < topPipe || birdBottom > bottomPipe;
     });
     if (groundImpact || pipeImpact) {
       if (draft.lifelines > 0) {
-        // Reduce lifelines and allow the game to continue
         draft.lifelines -= 1;
         console.log(`Lifelines remaining: ${draft.lifelines}`);
-
-        // Reset bird position or provide some visual feedback
         draft.bird.position.y = draft.bird.initial.y;
       } else {
-        // No lifelines left, end the game
         draft.bird.isFlying = false;
         draft.isStarted = false;
-        draft.bird.animate.rotate = [0, 0]; // Removed rotation to fix animation issue
+        draft.bird.animate.rotate = [0, 0];
         draft.gameOver = true;
+
+        // Submit score to the blockchain when game is over
+        submitScoreOnChain(draft.score);
       }
     } else {
       draft.bird.animate.rotate = [0, 0];
@@ -442,7 +483,6 @@ export const GameProvider = ({ children }: { children: React.ReactNode }) => {
       draft.bird.isFlying = true;
       draft.bird.position.y -= draft.bird.fly.distance;
       checkImpact(draft);
-      return draft;
     });
   };
 
@@ -451,7 +491,6 @@ export const GameProvider = ({ children }: { children: React.ReactNode }) => {
       draft.bird.isFlying = true;
       draft.bird.position.y += draft.bird.fall.distance;
       checkImpact(draft);
-      return draft;
     });
   };
 
@@ -473,7 +512,9 @@ export const GameProvider = ({ children }: { children: React.ReactNode }) => {
         startGame,
         resetGame,
         setSelectedCharacter,
-        restartGame, // Provide restartGame function
+        restartGame,
+        createGameOnChain,
+        submitScoreOnChain,
       }}
     >
       {children}
@@ -484,7 +525,7 @@ export const GameProvider = ({ children }: { children: React.ReactNode }) => {
 export default function useGame() {
   const context = React.useContext(GameContext);
   if (context === null) {
-    throw new Error("useGame must be used within a GameProvider");
+    throw new Error('useGame must be used within a GameProvider');
   }
   return context;
 }

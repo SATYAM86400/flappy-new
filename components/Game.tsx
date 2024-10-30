@@ -10,7 +10,6 @@ import useElementSize from "../hooks/useElementSize";
 import dynamic from "next/dynamic";
 import { useWalletContext } from "../context/walletContext";
 import _ from "lodash";
-import { createGameOnChain, submitScoreOnChain } from "../hooks/useGame";
 import CharacterSelector from "./CharacterSelector";
 import Leaderboard from "./Leaderboard";
 import Lifelines from "./Lifelines";
@@ -27,7 +26,9 @@ export default function Game() {
     gameOver,
     score,
     selectedCharacter,
-    restartGame, // Added restartGame function
+    restartGame,
+    createGameOnChain, // Use createGameOnChain from useGame
+    submitScoreOnChain, // Use submitScoreOnChain from useGame
   } = useGame();
   const [ref, window] = useElementSize();
   const { connected, account } = useWalletContext();
@@ -48,13 +49,9 @@ export default function Game() {
 
     try {
       console.log("Creating game on blockchain...");
-      const transaction = await createGameOnChain();
-      console.log("Transaction result:", transaction);
-      if (transaction) {
-        setGameStarted(true);
-      } else {
-        throw new Error("Transaction failed.");
-      }
+      await createGameOnChain();
+      console.log("Game created on blockchain");
+      setGameStarted(true);
     } catch (error) {
       console.error("Error creating game:", error);
       alert("Failed to create game on the blockchain.");
@@ -65,7 +62,7 @@ export default function Game() {
   };
 
   // Function to submit the score to the blockchain
-  const submitScoreTransaction = async (score, character) => {
+  const submitScoreTransaction = async (score) => {
     if (!connected || !account) {
       alert("Please connect your wallet before submitting your score.");
       return;
@@ -74,8 +71,8 @@ export default function Game() {
     setTransactionPending(true);
     try {
       console.log("Submitting score to blockchain...");
-      const transaction = await submitScoreOnChain(score, character);
-      console.log("Score submission result:", transaction);
+      await submitScoreOnChain(score);
+      console.log("Score submitted to blockchain");
       alert(`Your score of ${score} has been submitted.`);
     } catch (error) {
       console.error("Error submitting score:", error);
@@ -97,7 +94,7 @@ export default function Game() {
   // Submit the score when the game is over
   useEffect(() => {
     if (gameOver && score !== null) {
-      submitScoreTransaction(score, selectedCharacter);
+      submitScoreTransaction(score);
     }
   }, [gameOver]);
 

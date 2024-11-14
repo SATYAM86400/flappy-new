@@ -1,6 +1,7 @@
 // components/ClientSideWallet.tsx
 import React, { useState } from 'react';
 import { useWalletContext } from '../context/walletContext';
+import { Button, Box, Typography, Alert } from '@mui/material';
 
 const ClientSideWallet: React.FC = () => {
   const { connect, disconnect, connected, account } = useWalletContext();
@@ -30,25 +31,66 @@ const ClientSideWallet: React.FC = () => {
   };
 
   return (
-    <div className="absolute top-4 right-4 z-20">
-      {error && <div className="text-red-500 mb-2">{error}</div>}
+    <Box
+      sx={{
+        position: 'absolute',
+        top: 16,
+        right: 16,
+        zIndex: 20,
+        p: 2,
+        borderRadius: 2,
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        boxShadow: 3,
+        minWidth: '150px',
+      }}
+    >
+      {error && (
+        <Alert severity="error" sx={{ mb: 2, fontSize: '0.875rem', textAlign: 'center' }}>
+          {error}
+        </Alert>
+      )}
       {connected ? (
-        <>
-          <div className="text-white mb-2">Connected: {account?.address}</div>
-          <button onClick={handleDisconnect} className="bg-red-500 text-white px-4 py-2 rounded">
+        <Box display="flex" flexDirection="column" alignItems="center" gap={1}>
+          <Typography color="success.main" fontWeight="bold" variant="body2" textAlign="center">
+            Connected: {account?.address}
+          </Typography>
+          <Button
+            onClick={handleDisconnect}
+            variant="contained"
+            color="error"
+            sx={{
+              fontWeight: 'bold',
+              px: 3,
+              py: 1,
+              fontSize: '0.875rem',
+              '&:hover': {
+                backgroundColor: 'darkred',
+              },
+            }}
+          >
             Disconnect Wallet
-          </button>
-        </>
+          </Button>
+        </Box>
       ) : (
-        <button
+        <Button
           onClick={handleConnect}
-          className="bg-blue-500 text-white px-4 py-2 rounded"
+          variant="contained"
+          color="primary"
+          sx={{
+            fontWeight: 'bold',
+            px: 3,
+            py: 1,
+            fontSize: '0.875rem',
+            '&:hover': {
+              backgroundColor: 'blue',
+            },
+          }}
           disabled={loading}
         >
           {loading ? 'Connecting...' : 'Connect Wallet'}
-        </button>
+        </Button>
       )}
-    </div>
+    </Box>
   );
 };
 

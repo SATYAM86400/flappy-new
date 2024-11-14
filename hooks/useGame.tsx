@@ -1,12 +1,13 @@
 // useGame.tsx
+
 import _ from 'lodash';
-import React, { useEffect, useState } from 'react';
-import { SupraClient, HexString, BCS } from 'supra-l1-sdk'; // Import Supra SDK
+import React, { useEffect } from 'react';
 import { useImmer } from 'use-immer';
 import { TargetAndTransition } from 'framer-motion';
 import { WritableDraft } from 'immer/dist/internal';
 import { v4 } from 'uuid';
 import { useWalletContext } from '../context/walletContext';
+import axios from 'axios'; // Import axios to make API calls
 
 const HEIGHT = 64;
 const WIDTH = 92;
@@ -47,7 +48,8 @@ const defaultState = {
         position: { x: 0, y: 0 },
         initial: {
           x: 0,
-          y: 0 },
+          y: 0,
+        },
         size: { width: 0, height: 0 },
       },
     })),
@@ -176,50 +178,24 @@ const GameContext = React.createContext<GameContext | null>(null);
 
 export const GameProvider = ({ children }: { children: React.ReactNode }) => {
   const [state, setState] = useImmer<GameState>(defaultState);
-  const { connected, account, signAndSubmitTransaction } = useWalletContext();
-  const [supraClient, setSupraClient] = useState<SupraClient | null>(null);
+  const { connected, account } = useWalletContext();
 
-  // Replace with your module address
-  const MODULE_ADDRESS = '0x39dc021a730a577b379df7e4e8e673f8fa113b6bb2e6bce460779a0f0248d504';
-  const MODULE_NAME = 'flappy_game';
-
-  useEffect(() => {
-    const initSupraClient = async () => {
-      try {
-        // Initialize SupraClient
-        const client = await SupraClient.init('https://rpc-testnet.supra.com/');
-        setSupraClient(client);
-      } catch (error) {
-        console.error('Failed to initialize SupraClient:', error);
-      }
-    };
-
-    initSupraClient();
-  }, []);
+  // Remove SupraClient state and initialization
+  // Remove useEffect that initializes SupraClient
 
   const createGameOnChain = async () => {
     try {
-      if (!connected || !supraClient) {
-        throw new Error('Wallet not connected or SupraClient not initialized');
+      if (!connected || !account) {
+        throw new Error('Wallet not connected');
       }
 
-      // Prepare transaction details
-      const functionName = 'create_game';
+      // Make API call to create game
+      const response = await axios.post('/api/supra', {
+        action: 'create_game',
+        account, // Pass account address
+      });
 
-      // Create the transaction payload
-      const payload = {
-        function: `${MODULE_ADDRESS}::${MODULE_NAME}::${functionName}`,
-        type_arguments: [], // Type arguments, if any
-        arguments: [], // Function arguments, if any
-      };
-
-      // Create the transaction object
-      const transaction = await prepareTransaction(payload);
-
-      // Use the wallet to sign and submit the transaction
-      const response = await signAndSubmitTransaction(transaction);
-
-      console.log('Game creation transaction submitted:', response);
+      console.log('Game creation transaction submitted:', response.data);
     } catch (error) {
       console.error('Failed to create game on blockchain:', error);
       throw error;
@@ -228,59 +204,22 @@ export const GameProvider = ({ children }: { children: React.ReactNode }) => {
 
   const submitScoreOnChain = async (score: number) => {
     try {
-      if (!connected || !supraClient) {
-        throw new Error('Wallet not connected or SupraClient not initialized');
+      if (!connected || !account) {
+        throw new Error('Wallet not connected');
       }
 
-      // Prepare transaction details
-      const functionName = 'submit_score';
+      // Make API call to submit score
+      const response = await axios.post('/api/supra', {
+        action: 'submit_score',
+        account, // Pass account address
+        score,
+      });
 
-      // Serialize the score argument
-      const scoreArg = BCS.bcsSerializeUint64(score).toString('hex');
-
-      // Create the transaction payload
-      const payload = {
-        function: `${MODULE_ADDRESS}::${MODULE_NAME}::${functionName}`,
-        type_arguments: [], // Type arguments, if any
-        arguments: [scoreArg], // Function arguments
-      };
-
-      // Create the transaction object
-      const transaction = await prepareTransaction(payload);
-
-      // Use the wallet to sign and submit the transaction
-      const response = await signAndSubmitTransaction(transaction);
-
-      console.log('Score submission transaction submitted:', response);
+      console.log('Score submission transaction submitted:', response.data);
     } catch (error) {
       console.error('Failed to submit score on blockchain:', error);
       throw error;
     }
-  };
-
-  const prepareTransaction = async (payload: any) => {
-    if (!supraClient || !account) {
-      throw new Error('SupraClient or account not initialized');
-    }
-
-    // Get the user's address
-    const senderAddress = new HexString(account);
-
-    // Get the account info to get the sequence number
-    const accountInfo = await supraClient.getAccountInfo(senderAddress);
-
-    // Create the transaction object
-    const transaction = {
-      sender: account,
-      payload,
-      sequence_number: accountInfo.sequence_number.toString(),
-      max_gas_amount: '2000', // Adjust gas amount as needed
-      gas_unit_price: '1', // Adjust gas price as needed
-      expiration_timestamp_secs: (Math.floor(Date.now() / 1000) + 600).toString(), // Set expiration to 10 minutes from now
-      chain_id: supraClient.chainId.toString(),
-    };
-
-    return transaction;
   };
 
   // Main Functions (Game Logic)

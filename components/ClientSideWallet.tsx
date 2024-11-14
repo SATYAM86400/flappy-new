@@ -21,9 +21,9 @@ const ClientSideWallet: React.FC = () => {
     }
   };
 
-  const handleDisconnect = () => {
+  const handleDisconnect = async () => {
     try {
-      disconnect();
+      await disconnect();
     } catch (err: any) {
       console.error('Disconnection error:', err);
       setError(err.message || 'Failed to disconnect wallet');
@@ -37,22 +37,48 @@ const ClientSideWallet: React.FC = () => {
         top: 16,
         right: 16,
         zIndex: 20,
-        p: 2,
-        borderRadius: 2,
-        backgroundColor: 'rgba(0, 0, 0, 0.8)',
-        boxShadow: 3,
-        minWidth: '150px',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'flex-end',
       }}
     >
-      {error && (
-        <Alert severity="error" sx={{ mb: 2, fontSize: '0.875rem', textAlign: 'center' }}>
-          {error}
-        </Alert>
-      )}
-      {connected ? (
-        <Box display="flex" flexDirection="column" alignItems="center" gap={1}>
-          <Typography color="success.main" fontWeight="bold" variant="body2" textAlign="center">
-            Connected: {account?.address}
+      {!connected ? (
+        <Button
+          onClick={handleConnect}
+          variant="contained"
+          color="primary"
+          sx={{
+            fontWeight: 'bold',
+            backgroundColor: '#1e88e5',
+            '&:hover': {
+              backgroundColor: '#1565c0',
+            },
+          }}
+        >
+          Connect Wallet
+        </Button>
+      ) : (
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'flex-end',
+            gap: 1,
+          }}
+        >
+          <Typography
+            variant="body2"
+            fontWeight="bold"
+            color="textPrimary"
+            sx={{
+              maxWidth: '150px',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              textAlign: 'right',
+            }}
+          >
+            Connected: {account}
           </Typography>
           <Button
             onClick={handleDisconnect}
@@ -60,35 +86,15 @@ const ClientSideWallet: React.FC = () => {
             color="error"
             sx={{
               fontWeight: 'bold',
-              px: 3,
-              py: 1,
-              fontSize: '0.875rem',
+              backgroundColor: '#e53935',
               '&:hover': {
-                backgroundColor: 'darkred',
+                backgroundColor: '#b71c1c',
               },
             }}
           >
-            Disconnect Wallet
+            Disconnect
           </Button>
         </Box>
-      ) : (
-        <Button
-          onClick={handleConnect}
-          variant="contained"
-          color="primary"
-          sx={{
-            fontWeight: 'bold',
-            px: 3,
-            py: 1,
-            fontSize: '0.875rem',
-            '&:hover': {
-              backgroundColor: 'blue',
-            },
-          }}
-          disabled={loading}
-        >
-          {loading ? 'Connecting...' : 'Connect Wallet'}
-        </Button>
       )}
     </Box>
   );

@@ -34,7 +34,7 @@ export default function Game() {
   const { connected, account } = useWalletContext();
   const [gameStarted, setGameStarted] = useState(false);
   const [transactionPending, setTransactionPending] = useState(false);
-  const [transactionError, setTransactionError] = useState(null);
+  const [transactionError, setTransactionError] = useState<string | null>(null);
 
   // Function to create a game on the blockchain
   const createGameTransaction = async () => {
@@ -62,7 +62,7 @@ export default function Game() {
   };
 
   // Function to submit the score to the blockchain
-  const submitScoreTransaction = async (score) => {
+  const submitScoreTransaction = async (score: number) => {
     if (!connected || !account) {
       alert("Please connect your wallet before submitting your score.");
       return;

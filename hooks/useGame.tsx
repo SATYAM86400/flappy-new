@@ -1,5 +1,3 @@
-// useGame.tsx
-
 import _ from 'lodash';
 import React, { useEffect } from 'react';
 import { useImmer } from 'use-immer';
@@ -20,16 +18,11 @@ const defaultState = {
     animate: {} as TargetAndTransition,
     frame: FRAMES[0],
     frameIndex: 0,
-    initial: {
-      x: 0,
-      y: 0,
-    },
+    initial: { x: 0, y: 0 },
     isFlying: true,
     fall: { distance: 15, delay: 100 },
     fly: { distance: 75 },
-    flap: {
-      delay: 100,
-    },
+    flap: { delay: 100 },
   },
   pipes: Array(4)
     .fill('')
@@ -37,19 +30,13 @@ const defaultState = {
       top: {
         key: 'top' + index,
         position: { x: 0, y: 0 },
-        initial: {
-          x: 0,
-          y: 0,
-        },
+        initial: { x: 0, y: 0 },
         size: { width: 0, height: 0 },
       },
       bottom: {
         key: 'bottom' + index,
         position: { x: 0, y: 0 },
-        initial: {
-          x: 0,
-          y: 0,
-        },
+        initial: { x: 0, y: 0 },
         size: { width: 0, height: 0 },
       },
     })),
@@ -61,52 +48,23 @@ const defaultState = {
     distance: 10,
     delay: 75,
   },
-  rounds: [] as {
-    score: number;
-    datetime: string;
-    key: string;
-  }[],
+  rounds: [] as { score: number; datetime: string; key: string }[],
   isStarted: false,
   isReady: false,
-  gameWindow: {
-    width: 0,
-    height: 0,
-  },
-  multiplier: {
-    distance: 1.1,
-    step: 5,
-  },
+  gameWindow: { width: 0, height: 0 },
+  multiplier: { distance: 1.1, step: 5 },
   gameOver: false,
   score: 0,
   selectedCharacter: null as string | null,
-  leaderboard: {
-    TRUMP: 0,
-    KAMALA: 0,
-  },
+  leaderboard: { TRUMP: 0, KAMALA: 0 },
   lifelines: 3,
 };
 
-type Size = {
-  width: number;
-  height: number;
-};
+type Size = { width: number; height: number };
+type Coordinates = { x: number; y: number };
 
-type Coordinates = {
-  x: number;
-  y: number;
-};
-
-export type PipeType = {
-  position: Coordinates;
-  initial: Coordinates;
-  size: Size;
-  key?: string;
-};
-
-export type PipesType = {
-  top: PipeType;
-  bottom: PipeType;
-};
+export type PipeType = { position: Coordinates; initial: Coordinates; size: Size; key?: string };
+export type PipesType = { top: PipeType; bottom: PipeType };
 
 interface GameContext extends GameState {
   getNextFrame: () => void;
@@ -131,45 +89,21 @@ interface GameState {
     frameIndex: number;
     initial: Coordinates;
     isFlying: boolean;
-    fall: {
-      distance: number;
-      delay: number;
-    };
-    fly: {
-      distance: number;
-    };
-    flap: {
-      delay: number;
-    };
+    fall: { distance: number; delay: number };
+    fly: { distance: number };
+    flap: { delay: number };
   };
   pipes: PipesType[];
-  pipe: {
-    width: number;
-    height: number;
-    extension: number;
-    delay: number;
-    distance: number;
-    tolerance: number;
-  };
-  rounds: {
-    score: number;
-    datetime: string;
-    key: string;
-  }[];
+  pipe: { width: number; height: number; extension: number; delay: number; distance: number; tolerance: number };
+  rounds: { score: number; datetime: string; key: string }[];
   isStarted: boolean;
   isReady: boolean;
   gameWindow: Size;
-  multiplier: {
-    step: number;
-    distance: number;
-  };
+  multiplier: { step: number; distance: number };
   gameOver: boolean;
   score: number;
   selectedCharacter: string | null;
-  leaderboard: {
-    TRUMP: number;
-    KAMALA: number;
-  };
+  leaderboard: { TRUMP: number; KAMALA: number };
   lifelines: number;
 }
 
@@ -180,21 +114,16 @@ export const GameProvider = ({ children }: { children: React.ReactNode }) => {
   const [state, setState] = useImmer<GameState>(defaultState);
   const { connected, account } = useWalletContext();
 
-  // Remove SupraClient state and initialization
-  // Remove useEffect that initializes SupraClient
-
   const createGameOnChain = async () => {
     try {
       if (!connected || !account) {
         throw new Error('Wallet not connected');
       }
-
       // Make API call to create game
       const response = await axios.post('/api/supra', {
         action: 'create_game',
-        account, // Pass account address
+        account, // Pass account address if needed
       });
-
       console.log('Game creation transaction submitted:', response.data);
     } catch (error) {
       console.error('Failed to create game on blockchain:', error);
@@ -207,14 +136,12 @@ export const GameProvider = ({ children }: { children: React.ReactNode }) => {
       if (!connected || !account) {
         throw new Error('Wallet not connected');
       }
-
       // Make API call to submit score
       const response = await axios.post('/api/supra', {
         action: 'submit_score',
-        account, // Pass account address
+        account, // Pass account address if needed
         score,
       });
-
       console.log('Score submission transaction submitted:', response.data);
     } catch (error) {
       console.error('Failed to submit score on blockchain:', error);
@@ -222,18 +149,16 @@ export const GameProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
-  // Main Functions (Game Logic)
+  // Main Game Logic Functions
   const startGame = (gameWindow: Size) => {
     if (!connected) {
       console.error('Wallet not connected');
       return;
     }
-
     if (gameWindow.width === 0 || gameWindow.height === 0) {
       console.error('Window dimensions not set');
       return;
     }
-
     setState((draft) => {
       console.log('Starting game with window dimensions:', gameWindow.width, gameWindow.height);
       draft.gameWindow = gameWindow;
@@ -241,7 +166,7 @@ export const GameProvider = ({ children }: { children: React.ReactNode }) => {
       draft.isStarted = true;
       draft.gameOver = false;
       draft.score = 0;
-      draft.lifelines = 3; // Reset lifelines
+      draft.lifelines = 3;
       draft.rounds.push({
         score: 0,
         datetime: new Date().toISOString(),
@@ -250,9 +175,7 @@ export const GameProvider = ({ children }: { children: React.ReactNode }) => {
       setBirdCenter(draft);
       createPipes(draft);
     });
-
-    // Call createGameOnChain when game starts
-    createGameOnChain();
+    // Note: We removed the duplicate call to createGameOnChain here.
   };
 
   const resetGame = () => {
@@ -279,7 +202,6 @@ export const GameProvider = ({ children }: { children: React.ReactNode }) => {
   const increaseScore = (draft: StateDraft) => {
     draft.rounds[draft.rounds.length - 1].score += 1;
     draft.score += 1;
-
     if (draft.selectedCharacter) {
       draft.leaderboard[draft.selectedCharacter] += 1;
     }
@@ -311,24 +233,12 @@ export const GameProvider = ({ children }: { children: React.ReactNode }) => {
     draft.pipes.forEach((pipe, index) => {
       const { height, y } = generatePipeExtension(index, draft);
       var x = (index * 2 + 1) * draft.pipe.width + gameWindow.width;
-      pipe.top.initial = {
-        x,
-        y: 0,
-      };
-      pipe.top.size = {
-        height,
-        width: draft.pipe.width,
-      };
-      pipe.bottom.initial = {
-        x,
-        y,
-      };
-      pipe.bottom.size = {
-        height,
-        width: draft.pipe.width,
-      };
-      pipe.top.position = pipe.top.initial;
-      pipe.bottom.position = pipe.bottom.initial;
+      pipe.top.initial = { x, y: 0 };
+      pipe.top.size = { height, width: draft.pipe.width };
+      pipe.bottom.initial = { x, y };
+      pipe.bottom.size = { height, width: draft.pipe.width };
+      pipe.top.position = { ...pipe.top.initial };
+      pipe.bottom.position = { ...pipe.bottom.initial };
     });
   };
 
@@ -358,7 +268,6 @@ export const GameProvider = ({ children }: { children: React.ReactNode }) => {
       console.error('Wallet not connected');
       return;
     }
-
     if (state.isStarted) {
       fly();
     }
@@ -368,14 +277,13 @@ export const GameProvider = ({ children }: { children: React.ReactNode }) => {
     console.log('Window dimensions:', draft.gameWindow.width, draft.gameWindow.height);
     draft.bird.position.x = draft.gameWindow.width / 2 - draft.bird.size.width / 2;
     draft.bird.position.y = draft.gameWindow.height / 2 - draft.bird.size.height / 2;
-    draft.bird.initial.x = draft.bird.position.x;
-    draft.bird.initial.y = draft.bird.position.y;
+    draft.bird.initial = { ...draft.bird.position };
     console.log('Bird position:', draft.bird.position.x, draft.bird.position.y);
   };
 
   const getNextFrame = () => {
     setState((draft) => {
-      var next = (draft.bird.frameIndex + 1) % FRAMES.length;
+      const next = (draft.bird.frameIndex + 1) % FRAMES.length;
       draft.bird.frame = FRAMES[next];
       draft.bird.frameIndex = next;
     });
@@ -388,7 +296,8 @@ export const GameProvider = ({ children }: { children: React.ReactNode }) => {
       return (
         pipe.top.position.x <
           draft.bird.position.x - draft.pipe.tolerance + draft.bird.size.width &&
-        pipe.top.position.x + pipe.top.size.width > draft.bird.position.x + draft.pipe.tolerance
+        pipe.top.position.x + pipe.top.size.width >
+          draft.bird.position.x + draft.pipe.tolerance
       );
     });
     const pipeImpact = impactablePipes.some((pipe) => {
@@ -408,9 +317,7 @@ export const GameProvider = ({ children }: { children: React.ReactNode }) => {
         draft.isStarted = false;
         draft.bird.animate.rotate = [0, 0];
         draft.gameOver = true;
-
-        // Submit score to the blockchain when game is over
-        submitScoreOnChain(draft.score);
+        // Removed duplicate call to submitScoreOnChain here.
       }
     } else {
       draft.bird.animate.rotate = [0, 0];

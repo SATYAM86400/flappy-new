@@ -1,4 +1,3 @@
-// Game.tsx
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import FlappyBird from "./FlappyBird";
@@ -13,6 +12,7 @@ import _ from "lodash";
 import CharacterSelector from "./CharacterSelector";
 import Leaderboard from "./Leaderboard";
 import Lifelines from "./Lifelines";
+import TransactionLoader from "./TransactionLoader"; // Loading overlay component
 
 // Dynamically import WalletSetup with SSR disabled
 const WalletSetup = dynamic(() => import("./WalletSetup"), { ssr: false });
@@ -27,8 +27,8 @@ export default function Game() {
     score,
     selectedCharacter,
     restartGame,
-    createGameOnChain, // Use createGameOnChain from useGame
-    submitScoreOnChain, // Use submitScoreOnChain from useGame
+    createGameOnChain,
+    submitScoreOnChain,
   } = useGame();
   const [ref, window] = useElementSize();
   const { connected, account } = useWalletContext();
@@ -36,43 +36,35 @@ export default function Game() {
   const [transactionPending, setTransactionPending] = useState(false);
   const [transactionError, setTransactionError] = useState<string | null>(null);
 
-  // Function to create a game on the blockchain
+  // Function to create a game on the blockchain (triggered by the Start Game button)
   const createGameTransaction = async () => {
-    console.log("createGameTransaction called");
     if (!connected || !account) {
       alert("Please connect your wallet before starting the game.");
       return;
     }
-
     setTransactionPending(true);
     setTransactionError(null);
-
     try {
-      console.log("Creating game on blockchain...");
       await createGameOnChain();
-      console.log("Game created on blockchain");
       setGameStarted(true);
     } catch (error) {
       console.error("Error creating game:", error);
-      alert("Failed to create game on the blockchain.");
       setTransactionError("Failed to create game on the blockchain.");
+      alert("Failed to create game on the blockchain.");
     } finally {
       setTransactionPending(false);
     }
   };
 
-  // Function to submit the score to the blockchain
+  // Function to submit the score (triggered once when gameOver becomes true)
   const submitScoreTransaction = async (score: number) => {
     if (!connected || !account) {
       alert("Please connect your wallet before submitting your score.");
       return;
     }
-
     setTransactionPending(true);
     try {
-      console.log("Submitting score to blockchain...");
       await submitScoreOnChain(score);
-      console.log("Score submitted to blockchain");
       alert(`Your score of ${score} has been submitted.`);
     } catch (error) {
       console.error("Error submitting score:", error);
@@ -82,16 +74,14 @@ export default function Game() {
     }
   };
 
-  // Start the game when window dimensions are available and the game has started
+  // When window dimensions are available and gameStarted is true, start the game.
   useEffect(() => {
-    console.log("useEffect - Start Game Check");
     if (window.width > 0 && window.height > 0 && gameStarted) {
-      console.log("Starting game with window dimensions:", window);
       startGame(window);
     }
   }, [window, gameStarted]);
 
-  // Submit the score when the game is over
+  // When gameOver becomes true, submit the score once.
   useEffect(() => {
     if (gameOver && score !== null) {
       submitScoreTransaction(score);
@@ -103,7 +93,6 @@ export default function Game() {
     handleWindowClick();
   };
 
-  // Handle game restart
   const handleRestart = () => {
     restartGame();
     setGameStarted(false);
@@ -114,20 +103,21 @@ export default function Game() {
       layout
       className="m-auto overflow-hidden flex flex-col max-w-[480px] border-8 border-zinc-200 rounded-xl bg-[#ded895] relative max-h-[800px] w-full h-full"
     >
-      {/* Background of the game */}
+      {/* Loading overlay */}
+      {transactionPending && (
+        <TransactionLoader message="Processing blockchain transaction. Please wait..." />
+      )}
+
       <Background />
 
-      {/* Wallet connection UI */}
       <div className="absolute top-1 right-2 z-20">
         <WalletSetup />
       </div>
 
-      {/* Leaderboard */}
       <div className="absolute top-4 left-4 z-20">
         <Leaderboard />
       </div>
 
-      {/* Lifelines */}
       {gameStarted && (
         <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-20">
           <Lifelines />
@@ -140,14 +130,12 @@ export default function Game() {
         </div>
       )}
 
-      {/* Character Selector */}
       {!selectedCharacter && connected && (
         <div className="absolute inset-0 flex items-center justify-center z-10">
           <CharacterSelector />
         </div>
       )}
 
-      {/* Start Game Button (only if game isn't started yet) */}
       {selectedCharacter && !gameStarted && connected && (
         <div className="absolute inset-0 flex items-center justify-center z-10">
           <button
@@ -164,8 +152,6 @@ export default function Game() {
           >
             {transactionPending ? "Starting..." : "Start Game"}
           </button>
-
-          {/* Show error message if the transaction fails */}
           {transactionError && (
             <div style={{ color: "red", marginTop: "10px" }}>
               {transactionError}
@@ -174,7 +160,6 @@ export default function Game() {
         </div>
       )}
 
-      {/* Game Area */}
       {gameStarted && (
         <motion.div
           ref={ref}
@@ -193,7 +178,6 @@ export default function Game() {
         </motion.div>
       )}
 
-      {/* Restart Button when game is over */}
       {gameOver && (
         <div className="absolute inset-0 flex items-center justify-center z-20">
           <button
@@ -212,7 +196,6 @@ export default function Game() {
         </div>
       )}
 
-      {/* Footer with score */}
       <div className="absolute bottom-0 left-0 w-full">
         <Footer />
       </div>

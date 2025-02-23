@@ -1,10 +1,9 @@
-// components/WalletSetup.tsx
 import React, { useEffect } from 'react';
 import { useWalletContext } from '../context/walletContext';
-import { Button, Box, Typography } from '@mui/material';
+import { Button, Box, Typography, Link } from '@mui/material';
 
 const WalletSetup: React.FC = () => {
-  const { connected, account, connect, disconnect } = useWalletContext();
+  const { connected, account, connect, disconnect, walletInstalled } = useWalletContext();
 
   useEffect(() => {
     if (connected && account) {
@@ -13,6 +12,11 @@ const WalletSetup: React.FC = () => {
   }, [connected, account]);
 
   const handleConnect = async () => {
+    // If wallet is not installed, open the download page instead
+    if (!walletInstalled) {
+      window.open('https://starkey.app/', '_blank');
+      return;
+    }
     try {
       await connect();
     } catch (error) {
@@ -40,6 +44,31 @@ const WalletSetup: React.FC = () => {
         alignItems: 'flex-end',
       }}
     >
+      {/* Soft in-page alert if wallet is not installed */}
+      {!walletInstalled && (
+        <Box
+          sx={{
+            backgroundColor: '#ffebee',
+            border: '1px solid #e53935',
+            borderRadius: 1,
+            padding: 1,
+            mb: 1,
+          }}
+        >
+          <Typography variant="body2" color="error">
+            StarKey wallet is not installed.{' '}
+            <Link
+              href="https://starkey.app/"
+              target="_blank"
+              rel="noopener noreferrer"
+              sx={{ fontWeight: 'bold' }}
+            >
+              Download here.
+            </Link>
+          </Typography>
+        </Box>
+      )}
+
       {!connected ? (
         <Button
           onClick={handleConnect}
@@ -48,8 +77,8 @@ const WalletSetup: React.FC = () => {
           sx={{
             fontWeight: 'bold',
             backgroundColor: '#1e88e5',
-            minWidth: '140px', // Set a minimum width to prevent text wrapping
-            whiteSpace: 'nowrap', // Prevents wrapping
+            minWidth: '140px',
+            whiteSpace: 'nowrap',
             '&:hover': {
               backgroundColor: '#1565c0',
             },
@@ -87,7 +116,7 @@ const WalletSetup: React.FC = () => {
             sx={{
               fontWeight: 'bold',
               backgroundColor: '#e53935',
-              minWidth: '100px', // Adjust width for consistency with other buttons
+              minWidth: '100px',
               '&:hover': {
                 backgroundColor: '#b71c1c',
               },

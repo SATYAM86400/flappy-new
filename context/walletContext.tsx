@@ -6,6 +6,7 @@ interface WalletContextProps {
   connected: boolean;
   account: string | null;
   sendTransaction: (transaction: any) => Promise<string>;
+  walletInstalled: boolean; // flag to indicate if StarKey is installed
 }
 
 const WalletContext = createContext<WalletContextProps | null>(null);
@@ -14,41 +15,53 @@ export const WalletProviderWrapper: React.FC<{ children: ReactNode }> = ({ child
   const [connected, setConnected] = useState(false);
   const [account, setAccount] = useState<string | null>(null);
   const [provider, setProvider] = useState<any>(null);
+  const [walletInstalled, setWalletInstalled] = useState(true);
+
+  // Helper function to open the StarKey download page
+  const openStarKeyWebsite = () => {
+    const newWindow = window.open('https://starkey.app/', '_blank');
+    if (newWindow) {
+      newWindow.focus();
+    }
+  };
 
   useEffect(() => {
     const getProvider = () => {
-      if ('starkey' in window) {
-        const provider = window.starkey?.supra;
-
-        if (provider) {
-          return provider;
+      if (typeof window !== 'undefined' && 'starkey' in window) {
+        const starKeyObject = (window as any).starkey;
+        if (starKeyObject?.supra) {
+          return starKeyObject.supra;
         }
       }
-
-      window.open('https://starkey.app/', '_blank');
+      return null;
     };
 
-    const provider = getProvider();
-    if (provider) {
-      setProvider(provider);
-
-      // Handle account changes
-      provider.on('accountChanged', (accounts: string[]) => {
-        if (accounts.length > 0) {
-          setAccount(accounts[0]);
-        } else {
-          setAccount(null);
-          setConnected(false);
-        }
-      });
-    } else {
-      console.error('StarKey wallet not found');
+    const detectedProvider = getProvider();
+    if (!detectedProvider) {
+      console.warn('StarKey wallet not found.');
+      setWalletInstalled(false);
+      return; // Do not force a redirect on load.
     }
+    setProvider(detectedProvider);
+    setWalletInstalled(true);
+    detectedProvider.on('accountChanged', (accounts: string[]) => {
+      if (accounts && accounts.length > 0) {
+        setAccount(accounts[0]);
+        setConnected(true);
+        console.log('Switched to account', accounts[0]);
+      } else {
+        setAccount(null);
+        setConnected(false);
+        console.log('Disconnected account');
+      }
+    });
   }, []);
 
   const connect = async () => {
     if (!provider) {
-      console.error('StarKey provider not found');
+      // Instead of using a native alert, we let walletInstalled be false.
+      // Your UI can check walletInstalled from context and display a soft alert.
+      console.warn('StarKey wallet not installed. Please install it before connecting.');
       return;
     }
     try {
@@ -60,6 +73,7 @@ export const WalletProviderWrapper: React.FC<{ children: ReactNode }> = ({ child
       }
     } catch (err) {
       console.error('Failed to connect to StarKey:', err);
+      // Handle user cancellation or errors gracefully.
     }
   };
 
@@ -80,12 +94,11 @@ export const WalletProviderWrapper: React.FC<{ children: ReactNode }> = ({ child
 
   const sendTransaction = async (transaction: any) => {
     if (!provider) {
-      console.error('StarKey provider not found');
-      throw new Error('Provider not found');
+      throw new Error('StarKey provider not found');
     }
     try {
       const txHash = await provider.sendTransaction(transaction);
-      console.log('Transaction sent:', txHash);
+      console.log('Transaction sent. Hash:', txHash);
       return txHash;
     } catch (err) {
       console.error('Failed to send transaction:', err);
@@ -95,7 +108,7 @@ export const WalletProviderWrapper: React.FC<{ children: ReactNode }> = ({ child
 
   return (
     <WalletContext.Provider
-      value={{ connect, disconnect, connected, account, sendTransaction }}
+      value={{ connect, disconnect, connected, account, sendTransaction, walletInstalled }}
     >
       {children}
     </WalletContext.Provider>

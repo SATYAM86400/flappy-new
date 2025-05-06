@@ -1,114 +1,126 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  ReactNode,
+} from 'react';
 
 interface WalletContextProps {
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
   connected: boolean;
   account: string | null;
-  sendTransaction: (transaction: any) => Promise<string>;
-  walletInstalled: boolean; // flag to indicate if StarKey is installed
+  sendTransaction: (tx: any) => Promise<string>;
+  walletInstalled: boolean;
 }
 
 const WalletContext = createContext<WalletContextProps | null>(null);
 
-export const WalletProviderWrapper: React.FC<{ children: ReactNode }> = ({ children }) => {
+export const WalletProviderWrapper: React.FC<{ children: ReactNode }> = ({
+  children,
+}) => {
   const [connected, setConnected] = useState(false);
   const [account, setAccount] = useState<string | null>(null);
   const [provider, setProvider] = useState<any>(null);
   const [walletInstalled, setWalletInstalled] = useState(true);
 
-  // Helper function to open the StarKey download page
-  const openStarKeyWebsite = () => {
-    const newWindow = window.open('https://starkey.app/', '_blank');
-    if (newWindow) {
-      newWindow.focus();
-    }
-  };
+  /** ------------ helpers ------------ */
 
-  useEffect(() => {
-    const getProvider = () => {
-      if (typeof window !== 'undefined' && 'starkey' in window) {
-        const starKeyObject = (window as any).starkey;
-        if (starKeyObject?.supra) {
-          return starKeyObject.supra;
-        }
-      }
-      return null;
+  // resolves after ms
+  const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+
+  /** Attempts to grab window.starkey.supra (waits once before giving up) */
+  const detectProvider = async () => {
+    const getProviderOnce = () => {
+      if (typeof window === 'undefined') return null;
+      return (window as any)?.starkey?.supra ?? null;
     };
 
-    const detectedProvider = getProvider();
-    if (!detectedProvider) {
-      console.warn('StarKey wallet not found.');
-      setWalletInstalled(false);
-      return; // Do not force a redirect on load.
-    }
-    setProvider(detectedProvider);
-    setWalletInstalled(true);
-    detectedProvider.on('accountChanged', (accounts: string[]) => {
-      if (accounts && accounts.length > 0) {
-        setAccount(accounts[0]);
-        setConnected(true);
-        console.log('Switched to account', accounts[0]);
-      } else {
-        setAccount(null);
-        setConnected(false);
-        console.log('Disconnected account');
+    let p = getProviderOnce();
+    if (p) return p; // fast‑path
+
+    // Wallets inject after window load – give them a moment
+    await delay(3000);
+    p = getProviderOnce();
+    return p;
+  };
+
+  /** ------------ lifecycle ------------ */
+
+  useEffect(() => {
+    (async () => {
+      const p = await detectProvider();
+      if (!p) {
+        setWalletInstalled(false);
+        return;
       }
-    });
+      setProvider(p);
+      setWalletInstalled(true);
+
+      // listen for account changes
+      p.on?.('accountChanged', (accounts: string[]) => {
+        if (accounts?.length) {
+          setAccount(accounts[0]);
+          setConnected(true);
+        } else {
+          setAccount(null);
+          setConnected(false);
+        }
+      });
+    })();
   }, []);
+
+  /** ------------ public API ------------ */
 
   const connect = async () => {
     if (!provider) {
-      // Instead of using a native alert, we let walletInstalled be false.
-      // Your UI can check walletInstalled from context and display a soft alert.
-      console.warn('StarKey wallet not installed. Please install it before connecting.');
+      setWalletInstalled(false);
+      window.open('https://starkey.app/', '_blank');
       return;
     }
+
+    // give the extension time to finish initialisation
+    await delay(4000);
+
     try {
-      const accounts = await provider.connect();
-      if (accounts.length > 0) {
+      const accounts: string[] = await provider.connect();
+      if (accounts?.length) {
         setAccount(accounts[0]);
         setConnected(true);
-        console.log('Connected to StarKey wallet:', accounts[0]);
+        console.log('Connected to StarKey:', accounts[0]);
       }
     } catch (err) {
-      console.error('Failed to connect to StarKey:', err);
-      // Handle user cancellation or errors gracefully.
+      console.error('User rejected or connection failed:', err);
     }
   };
 
   const disconnect = async () => {
-    if (!provider) {
-      console.error('StarKey provider not found');
-      return;
-    }
+    if (!provider) return;
     try {
       await provider.disconnect();
       setAccount(null);
       setConnected(false);
-      console.log('Disconnected from StarKey wallet');
     } catch (err) {
-      console.error('Failed to disconnect from StarKey:', err);
+      console.error('Disconnect failed:', err);
     }
   };
 
-  const sendTransaction = async (transaction: any) => {
-    if (!provider) {
-      throw new Error('StarKey provider not found');
-    }
-    try {
-      const txHash = await provider.sendTransaction(transaction);
-      console.log('Transaction sent. Hash:', txHash);
-      return txHash;
-    } catch (err) {
-      console.error('Failed to send transaction:', err);
-      throw err;
-    }
+  const sendTransaction = async (tx: any) => {
+    if (!provider) throw new Error('StarKey provider not found');
+    return provider.sendTransaction(tx);
   };
 
   return (
     <WalletContext.Provider
-      value={{ connect, disconnect, connected, account, sendTransaction, walletInstalled }}
+      value={{
+        connect,
+        disconnect,
+        connected,
+        account,
+        sendTransaction,
+        walletInstalled,
+      }}
     >
       {children}
     </WalletContext.Provider>
@@ -116,9 +128,8 @@ export const WalletProviderWrapper: React.FC<{ children: ReactNode }> = ({ child
 };
 
 export const useWalletContext = () => {
-  const context = useContext(WalletContext);
-  if (!context) {
-    throw new Error('useWalletContext must be used within a WalletProviderWrapper');
-  }
-  return context;
+  const ctx = useContext(WalletContext);
+  if (!ctx)
+    throw new Error('useWalletContext must be used inside WalletProviderWrapper');
+  return ctx;
 };

@@ -1,36 +1,26 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useWalletContext } from '../context/walletContext';
 import { Button, Box, Typography, Link } from '@mui/material';
 
 const WalletSetup: React.FC = () => {
-  const { connected, account, connect, disconnect, walletInstalled } = useWalletContext();
+  const { connected, account, connect, disconnect, walletInstalled } =
+    useWalletContext();
+
+  /* -------- cooldown (grey‑out) logic -------- */
+  const [cooldown, setCooldown] = useState(true);
 
   useEffect(() => {
+    // 4‑second timer
+    const id = setTimeout(() => setCooldown(false), 4000);
+    return () => clearTimeout(id);
+  }, []);
+
+  /* -------- debug -------- */
+  useEffect(() => {
     if (connected && account) {
-      console.log('Wallet is connected with address:', account);
+      console.log('Wallet connected:', account);
     }
   }, [connected, account]);
-
-  const handleConnect = async () => {
-    // If wallet is not installed, open the download page instead
-    if (!walletInstalled) {
-      window.open('https://starkey.app/', '_blank');
-      return;
-    }
-    try {
-      await connect();
-    } catch (error) {
-      console.error('Failed to connect wallet:', error);
-    }
-  };
-
-  const handleDisconnect = async () => {
-    try {
-      await disconnect();
-    } catch (error) {
-      console.error('Failed to disconnect wallet:', error);
-    }
-  };
 
   return (
     <Box
@@ -44,14 +34,14 @@ const WalletSetup: React.FC = () => {
         alignItems: 'flex-end',
       }}
     >
-      {/* Soft in-page alert if wallet is not installed */}
+      {/* Soft alert if the extension is missing */}
       {!walletInstalled && (
         <Box
           sx={{
             backgroundColor: '#ffebee',
             border: '1px solid #e53935',
             borderRadius: 1,
-            padding: 1,
+            p: 1,
             mb: 1,
           }}
         >
@@ -69,23 +59,26 @@ const WalletSetup: React.FC = () => {
         </Box>
       )}
 
+      {/* -------- CONNECT / DISCONNECT UI -------- */}
       {!connected ? (
         <Button
-          onClick={handleConnect}
-          variant="contained"
-          color="primary"
-          sx={{
-            fontWeight: 'bold',
-            backgroundColor: '#1e88e5',
-            minWidth: '140px',
-            whiteSpace: 'nowrap',
-            '&:hover': {
-              backgroundColor: '#1565c0',
-            },
-          }}
-        >
-          Connect Wallet
-        </Button>
+  onClick={connect}
+  disabled={cooldown}
+  variant="contained"
+  sx={{
+    fontWeight: 'bold',
+    minWidth: '140px',
+    whiteSpace: 'nowrap',
+    backgroundColor: cooldown ? '#9e9e9e' : '#1e88e5',
+    '&:hover': {
+      backgroundColor: cooldown ? '#9e9e9e' : '#1565c0',
+    },
+    cursor: cooldown ? 'not-allowed' : 'pointer',
+  }}
+>
+  {cooldown ? 'Please wait…' : 'Connect Wallet'}
+</Button>
+
       ) : (
         <Box
           sx={{
@@ -98,7 +91,6 @@ const WalletSetup: React.FC = () => {
           <Typography
             variant="body2"
             fontWeight="bold"
-            color="textPrimary"
             sx={{
               maxWidth: '150px',
               whiteSpace: 'nowrap',
@@ -110,16 +102,14 @@ const WalletSetup: React.FC = () => {
             Connected: {account}
           </Typography>
           <Button
-            onClick={handleDisconnect}
+            onClick={disconnect}
             variant="contained"
             color="error"
             sx={{
               fontWeight: 'bold',
               backgroundColor: '#e53935',
               minWidth: '100px',
-              '&:hover': {
-                backgroundColor: '#b71c1c',
-              },
+              '&:hover': { backgroundColor: '#b71c1c' },
             }}
           >
             Disconnect

@@ -11,7 +11,7 @@ let moduleWasInitialized = false;
 
 async function initSupraClient() {
   if (!supraClient) {
-    supraClient = await SupraClient.init('https://rpc-testnet.supra.com/');
+    supraClient = await SupraClient.init('https://rpc-mainnet.supra.com/');
   }
 }
 

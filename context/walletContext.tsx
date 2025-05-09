@@ -5,6 +5,11 @@ import React, {
   useState,
   ReactNode,
 } from 'react';
+import { supabase } from '../supabaseClient';
+
+/* ------------------------------------------------------------------ */
+/*  Types & context                                                   */
+/* ------------------------------------------------------------------ */
 
 interface WalletContextProps {
   connect: () => Promise<void>;
@@ -15,39 +20,54 @@ interface WalletContextProps {
   walletInstalled: boolean;
 }
 
-const WalletContext = createContext<WalletContextProps | null>(null);
+export const WalletContext = createContext<WalletContextProps | null>(null);
+
+/* ------------------------------------------------------------------ */
+/*  Helpers                                                           */
+/* ------------------------------------------------------------------ */
+
+const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+
+const detectProvider = async () => {
+  const grab = () =>
+    typeof window !== 'undefined' ? (window as any)?.starkey?.supra ?? null : null;
+
+  let p = grab();
+  if (p) return p;
+  await delay(3000);               // give extension time to inject
+  return grab();
+};
+
+/* ------------------------------------------------------------------ */
+/*  Supabase I/O                                                      */
+/* ------------------------------------------------------------------ */
+
+const WALLET_TABLE = 'game_wallets';
+
+const upsertWallet = async (addr: string) => {
+  const { error } = await supabase
+    .from(WALLET_TABLE)
+    .upsert(
+      { wallet_addr: addr, last_seen: new Date().toISOString() },
+      { onConflict: 'wallet_addr' }
+    );
+
+  if (error) console.error('[Supabase] wallet upsert failed:', error);
+};
+
+/* ------------------------------------------------------------------ */
+/*  Provider                                                          */
+/* ------------------------------------------------------------------ */
 
 export const WalletProviderWrapper: React.FC<{ children: ReactNode }> = ({
   children,
 }) => {
-  const [connected, setConnected] = useState(false);
-  const [account, setAccount] = useState<string | null>(null);
-  const [provider, setProvider] = useState<any>(null);
+  const [connected, setConnected]     = useState(false);
+  const [account,   setAccount]       = useState<string | null>(null);
+  const [provider,  setProvider]      = useState<any>(null);
   const [walletInstalled, setWalletInstalled] = useState(true);
 
-  /** ------------ helpers ------------ */
-
-  // resolves after ms
-  const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
-
-  /** Attempts to grab window.starkey.supra (waits once before giving up) */
-  const detectProvider = async () => {
-    const getProviderOnce = () => {
-      if (typeof window === 'undefined') return null;
-      return (window as any)?.starkey?.supra ?? null;
-    };
-
-    let p = getProviderOnce();
-    if (p) return p; // fast‑path
-
-    // Wallets inject after window load – give them a moment
-    await delay(3000);
-    p = getProviderOnce();
-    return p;
-  };
-
-  /** ------------ lifecycle ------------ */
-
+  /* ---------- provider bootstrap ---------- */
   useEffect(() => {
     (async () => {
       const p = await detectProvider();
@@ -56,13 +76,13 @@ export const WalletProviderWrapper: React.FC<{ children: ReactNode }> = ({
         return;
       }
       setProvider(p);
-      setWalletInstalled(true);
 
-      // listen for account changes
       p.on?.('accountChanged', (accounts: string[]) => {
         if (accounts?.length) {
-          setAccount(accounts[0]);
+          const addr = accounts[0];
+          setAccount(addr);
           setConnected(true);
+          upsertWallet(addr);          // keep DB fresh
         } else {
           setAccount(null);
           setConnected(false);
@@ -71,7 +91,7 @@ export const WalletProviderWrapper: React.FC<{ children: ReactNode }> = ({
     })();
   }, []);
 
-  /** ------------ public API ------------ */
+  /* ---------- actions ---------- */
 
   const connect = async () => {
     if (!provider) {
@@ -80,18 +100,18 @@ export const WalletProviderWrapper: React.FC<{ children: ReactNode }> = ({
       return;
     }
 
-    // give the extension time to finish initialisation
-    await delay(4000);
-
+    await delay(4000);                 // extension init buffer
     try {
       const accounts: string[] = await provider.connect();
       if (accounts?.length) {
-        setAccount(accounts[0]);
+        const addr = accounts[0];
+        setAccount(addr);
         setConnected(true);
-        console.log('Connected to StarKey:', accounts[0]);
+        console.log('Connected to StarKey:', addr);
+        await upsertWallet(addr);      // first connect
       }
     } catch (err) {
-      console.error('User rejected or connection failed:', err);
+      console.error('Connect failed / rejected:', err);
     }
   };
 
@@ -99,10 +119,9 @@ export const WalletProviderWrapper: React.FC<{ children: ReactNode }> = ({
     if (!provider) return;
     try {
       await provider.disconnect();
+    } finally {
       setAccount(null);
       setConnected(false);
-    } catch (err) {
-      console.error('Disconnect failed:', err);
     }
   };
 
@@ -111,6 +130,7 @@ export const WalletProviderWrapper: React.FC<{ children: ReactNode }> = ({
     return provider.sendTransaction(tx);
   };
 
+  /* ---------- expose ---------- */
   return (
     <WalletContext.Provider
       value={{
@@ -126,6 +146,10 @@ export const WalletProviderWrapper: React.FC<{ children: ReactNode }> = ({
     </WalletContext.Provider>
   );
 };
+
+/* ------------------------------------------------------------------ */
+/*  Hook                                                              */
+/* ------------------------------------------------------------------ */
 
 export const useWalletContext = () => {
   const ctx = useContext(WalletContext);

@@ -18,7 +18,7 @@ export function Bird() {
 
   // Determine the sprite image based on selectedCharacter
   const characterImage =
-    selectedCharacter === "TRUMP" ? "trump.png" : "kamala.png";
+    selectedCharacter === "TRUMP" ? "trump.png" : "jimping.png";
 
   return (
     <div

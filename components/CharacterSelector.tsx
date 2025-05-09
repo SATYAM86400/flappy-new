@@ -17,7 +17,7 @@ export default function CharacterSelector() {
           <img
             src="/trump.png" // Ensure the path to the image is correct
             alt="Trump"
-            className="w-24 h-24 cursor-pointer"
+            className="w-24 h-36 cursor-pointer"
             onClick={() => handleCharacterSelect("TRUMP")}
           />
           <button
@@ -29,16 +29,16 @@ export default function CharacterSelector() {
         </div>
         <div className="mx-4">
           <img
-            src="/kamala.png" // Ensure the path to the image is correct
-            alt="Kamala"
-            className="w-24 h-24 cursor-pointer"
-            onClick={() => handleCharacterSelect("KAMALA")}
+            src="/jimping.png" // Ensure the path to the image is correct
+            alt="Xi Jinping"
+            className="w-24 h-36 cursor-pointer"
+            onClick={() => handleCharacterSelect("JINPING")}
           />
           <button
-            onClick={() => handleCharacterSelect("KAMALA")}
+            onClick={() => handleCharacterSelect("JINPING")}
             className="mt-2 px-4 py-2 bg-red-500 text-white rounded"
           >
-            Kamala
+            Xi Jinping
           </button>
         </div>
       </div>

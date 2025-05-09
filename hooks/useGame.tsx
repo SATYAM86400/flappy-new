@@ -6,10 +6,14 @@ import { WritableDraft } from 'immer/dist/internal';
 import { v4 } from 'uuid';
 import { useWalletContext } from '../context/walletContext';
 import axios from 'axios'; // Import axios to make API calls
+import { supabase } from '../supabaseClient';
 
 const HEIGHT = 64;
 const WIDTH = 92;
 const FRAMES = ['0px', '92px', '184px', '0px'];
+
+const TABLE  = 'supra-game';                // ← scoreboard table
+
 
 const defaultState = {
   bird: {
@@ -56,7 +60,7 @@ const defaultState = {
   gameOver: false,
   score: 0,
   selectedCharacter: null as string | null,
-  leaderboard: { TRUMP: 0, KAMALA: 0 },
+  leaderboard: { TRUMP: 0, JINPING: 0 },
   lifelines: 3,
 };
 
@@ -103,7 +107,7 @@ interface GameState {
   gameOver: boolean;
   score: number;
   selectedCharacter: string | null;
-  leaderboard: { TRUMP: number; KAMALA: number };
+  leaderboard: { TRUMP: number; JINPING: number };
   lifelines: number;
 }
 
@@ -199,13 +203,56 @@ export const GameProvider = ({ children }: { children: React.ReactNode }) => {
     });
   };
 
-  const increaseScore = (draft: StateDraft) => {
-    draft.rounds[draft.rounds.length - 1].score += 1;
-    draft.score += 1;
-    if (draft.selectedCharacter) {
-      draft.leaderboard[draft.selectedCharacter] += 1;
+  /* ----------------------------------------------------------------
+     Supabase helpers (same as before, logs kept)
+  ----------------------------------------------------------------- */
+  const fetchLeaderboard = async () => {
+    const { data, error } = await supabase
+      .from(TABLE)
+      .select('player_name, score')
+      .order('score', { ascending:false })
+      .limit(5);
+    if (error) return console.error('[Supabase] fetch error:', error);
+    console.table(data);
+
+    const map: { [k:string]:number } = {};
+    data?.forEach(r => (map[r.player_name] = r.score));
+    setState(d => { d.leaderboard = map; });
+  };
+
+  const updateLeaderboard = async (score:number, name:string) => {
+    const { data, error } = await supabase
+      .from(TABLE)
+      .upsert({ player_name:name, score }, { onConflict:'player_name' });
+
+    if (error) console.error('[Supabase] upsert error:', error);
+    else {
+      console.log('[Supabase] upsert ok:', data);
+      fetchLeaderboard();                       // refresh UI
     }
   };
+
+  /* ----------------------------------------------------------------
+     🟢  FIXED: copy values out of draft before async call
+  ----------------------------------------------------------------- */
+  const increaseScore = (draft: WritableDraft<GameState>) => {
+    draft.rounds[draft.rounds.length - 1].score += 1;
+    draft.score += 1;
+
+    if (draft.selectedCharacter) {
+      const char = draft.selectedCharacter;                     // <- copy
+      const cur  = draft.leaderboard[char] ?? 0;
+      const next = cur + 1;
+      draft.leaderboard[char] = next;
+
+      setTimeout(() => updateLeaderboard(next, char), 0);       // use copy
+    }
+  };
+
+  /* ----------------------------------------------------------------
+     pull leaderboard once on mount
+  ----------------------------------------------------------------- */
+  useEffect(() => { fetchLeaderboard(); }, []);
 
   const multiplySpeed = (draft: StateDraft) => {
     const round = _.last(draft.rounds);
